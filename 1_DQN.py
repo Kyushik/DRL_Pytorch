@@ -3,10 +3,15 @@ import numpy as np
 import random
 import time
 import datetime
+import os 
 from collections import deque
 from mlagents.envs import UnityEnvironment
 
+import torch
+import torch.optim as optim
+
 import agent 
+import model
 import config
         
 # Main function
@@ -19,8 +24,17 @@ if __name__ == '__main__':
     brain = env.brains[default_brain]
 
     train_mode = config.train_mode
-    
-    agent = agent.DQNAgent()
+
+    if train_mode:
+        os.mkdir(config.save_path)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    model_ = model.DQN_net(config.action_size, "main").to(device)
+    target_model_ = model.DQN_net(config.action_size, "target").to(device)
+    optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
+
+    agent = agent.DQNAgent(model_, target_model_, optimizer, device)
 
     step = 0
     episode = 0
@@ -97,7 +111,8 @@ if __name__ == '__main__':
         if episode % config.print_episode == 0 and episode != 0:
             print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / epsilon: {:.3f}".format
                   (step, episode, np.mean(reward_list), np.mean(loss_list), agent.epsilon))
-            # agent.Write_Summray(np.mean(reward_list), np.mean(loss_list), episode)
+            agent.write_scalar(np.mean(loss_list), np.mean(reward_list), episode)
+
             reward_list = []
             loss_list = []
 

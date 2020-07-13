@@ -1,8 +1,8 @@
 # Config
 import datetime 
 
-state_size = [80,80,3]
-action_size = 4 
+state_size = [40,80,1]
+action_size = 3 
 
 load_model = False
 train_mode = True
@@ -10,15 +10,15 @@ train_mode = True
 batch_size = 32
 mem_maxlen = 50000
 
-discount_factor = 0.9
+discount_factor = 0.99
 learning_rate = 0.00025
 
-skip_frame = 1
-stack_frame = 1
+skip_frame = 4
+stack_frame = 4
 
 start_train_step = 25000
-run_step = 100000
-test_step = 2500
+run_step = 500000
+test_step = 10000
 
 target_update_step = int(run_step/100)
 print_episode = 10
@@ -31,11 +31,11 @@ epsilon_min = 0.1
 env_config = {}
 
 # Environment Path 
-game = "GridWorld"
+game = "Pong"
 env_name = "./env/" + game + "/Windows/" + game
 
 # 모델 저장 및 불러오기 경로
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
 
 save_path = "./saved_models/" + game + "/" + date_time + "_DQN"
-load_path = "./saved_models/" + game + "/20200221-10-30-27_DQN/model.pth"
+load_path = "./saved_models/" + game + "/20200712-23-12-17_DQN/model.pth"
