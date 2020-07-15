@@ -17,7 +17,7 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name)
+    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
 
     # setting brain for unity 
     default_brain = env.brain_names[0]
@@ -30,8 +30,8 @@ if __name__ == '__main__':
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model_ = model.DQN_net(config.action_size, "main").to(device)
-    target_model_ = model.DQN_net(config.action_size, "target").to(device)
+    model_ = model.DQN(config.action_size, "main").to(device)
+    target_model_ = model.DQN(config.action_size, "target").to(device)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
     agent = agent.DQNAgent(model_, target_model_, optimizer, device)
@@ -40,6 +40,7 @@ if __name__ == '__main__':
     episode = 0
     reward_list = []
     loss_list = []
+    max_Q_list = []
 
     # Reset Unity environment and set the train mode according to the environment setting (env_config)  
     env_info = env.reset(train_mode=train_mode, config=config.env_config)[default_brain]
@@ -93,8 +94,9 @@ if __name__ == '__main__':
                     agent.epsilon -= 1 / (config.run_step - config.start_train_step)
 
                 # 학습 수행 
-                loss = agent.train_model(done)
+                loss, maxQ = agent.train_model()
                 loss_list.append(loss)
+                max_Q_list.append(maxQ)
 
                 # 타겟 네트워크 업데이트 
                 if step % (config.target_update_step) == 0:
@@ -109,16 +111,13 @@ if __name__ == '__main__':
 
         # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록 
         if episode % config.print_episode == 0 and episode != 0:
-            print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / epsilon: {:.3f}".format
-                  (step, episode, np.mean(reward_list), np.mean(loss_list), agent.epsilon))
-            agent.write_scalar(np.mean(loss_list), np.mean(reward_list), episode)
+            print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
+                  (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
+            agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
 
             reward_list = []
             loss_list = []
+            max_Q_list = []
 
     agent.save_model()
     env.close()
-
-
-
-

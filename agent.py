@@ -1,12 +1,16 @@
+import model 
 import config
 
 import torch
+import torch.optim as optim
 import torch.nn.functional as F
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np 
 import random
 from collections import deque
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # DQNAgent 클래스 -> DQN 알고리즘을 위한 다양한 함수 정의 
 class DQNAgent():
@@ -63,7 +67,7 @@ class DQNAgent():
         print("Save Model: {}".format(config.save_path))
 
     # 학습 수행 
-    def train_model(self, done):
+    def train_model(self):
         # 학습을 위한 미니 배치 데이터 샘플링
         mini_batch = random.sample(self.memory, config.batch_size)
 
@@ -85,6 +89,8 @@ class DQNAgent():
         target_Q = predict_Q.cpu().detach().numpy()
         target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device)).cpu().detach().numpy()
 
+        max_Q = np.max(target_Q)
+
         for i in range(config.batch_size):
             if done_batch[i]:
                 target_Q[i, action_batch[i]] = reward_batch[i]
@@ -96,13 +102,61 @@ class DQNAgent():
         loss.backward()
         self.optimizer.step()
 
-        return loss.item()
+        return loss.item(), max_Q
 
     # 타겟 네트워크 업데이트 
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
 
-    def write_scalar(self, loss, reward, episode):
-        self.writer.add_scalar('Mean Loss', loss, episode)
-        self.writer.add_scalar('Mean Reward', reward, episode)
-        self.writer.flush()
+    def write_scalar(self, loss, reward, maxQ, episode):
+        self.writer.add_scalar('Mean_Loss', loss, episode)
+        self.writer.add_scalar('Mean_Reward', reward, episode)
+        self.writer.add_scalar('Max_Q', maxQ, episode)
+
+    # Epsilon greedy 기법에 따라 행동 결정
+    def get_action_noisy(self, state, step, train_mode):
+        if step < config.start_train_step and train_mode:
+            # 랜덤하게 행동 결정
+            return np.random.randint(0, config.action_size)
+        else:    
+            # 네트워크 연산에 따라 행동 결정
+            Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device), torch.tensor(train_mode).to(self.device))
+            return np.argmax(Q.cpu().detach().numpy())
+
+    # 학습 수행 
+    def train_model_noisy(self):
+        # 학습을 위한 미니 배치 데이터 샘플링
+        mini_batch = random.sample(self.memory, config.batch_size)
+
+        state_batch = []
+        action_batch = []
+        reward_batch = []
+        next_state_batch = []
+        done_batch = []
+
+        for i in range(config.batch_size):
+            state_batch.append(mini_batch[i][0])
+            action_batch.append(mini_batch[i][1])
+            reward_batch.append(mini_batch[i][2])
+            next_state_batch.append(mini_batch[i][3])
+            done_batch.append(mini_batch[i][4])
+
+        # 타겟값 계산
+        predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device), True) 
+        target_Q = predict_Q.cpu().detach().numpy()
+        target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device), False).cpu().detach().numpy()
+
+        max_Q = np.max(target_Q)
+
+        for i in range(config.batch_size):
+            if done_batch[i]:
+                target_Q[i, action_batch[i]] = reward_batch[i]
+            else:
+                target_Q[i, action_batch[i]] = reward_batch[i] + config.discount_factor * np.amax(target_nextQ[i])
+
+        loss = F.smooth_l1_loss(predict_Q.to(self.device), torch.from_numpy(target_Q).to(self.device))
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss.item(), max_Q
