@@ -1,4 +1,4 @@
-import torch 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -28,6 +28,37 @@ class DQN(nn.Module):
         x = self.fc2(x)
         return x
 
+
+class DuelingDQN(nn.Module):
+    def __init__(self, num_action, network_name):
+        super(DuelingDQN, self).__init__()
+        self.num_action = num_action
+        input_channel = config.state_size[2]*config.stack_frame
+        self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
+        self.fc1 = nn.Linear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512)
+        self.fc2_a = nn.Linear(512, num_action)
+        self.fc2_v = nn.Linear(512, 1)
+
+    def forward(self, x):
+        x = (x-(255.0/2))/(255.0/2)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        # A stream : action advantage
+        x_a = self.fc2_a(x) # [bs, 4]
+        x_a_mean = x_a.mean(dim=1).unsqueeze(1) # [bs, 1]
+        x_a = x_a - x_a_mean.repeat(1, self.num_action) # [bs, 4]
+        # V stream : state value
+        x_v = self.fc2_v(x) # [bs, 1]
+        x_v = x_v.repeat(1, self.num_action) # [bs, 4]
+        out = x_a + x_v # [bs, 4]
+        return out
+
+
 class NoisyDQN(nn.Module):
     def __init__(self, num_action, network_name):
         super(NoisyDQN, self).__init__()
@@ -35,13 +66,13 @@ class NoisyDQN(nn.Module):
         self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
-        
+
         flat_size = 64*int(config.state_size[0]/8)*int(config.state_size[1]/8)
         self.mu_w1 = nn.init.uniform_(torch.empty(flat_size, 512), -np.sqrt(3/flat_size), np.sqrt(3/flat_size)).to(device)
         self.sig_w1 = nn.init.constant_(torch.empty(flat_size, 512), 0.017).to(device)
         self.mu_b1 = nn.init.uniform_(torch.empty(512), -np.sqrt(3/flat_size), np.sqrt(3/flat_size)).to(device)
         self.sig_b1 = nn.init.constant_(torch.empty(512), 0.017).to(device)
-        
+
         self.mu_w2= nn.init.uniform_(torch.empty(512, num_action), -np.sqrt(3/512), np.sqrt(3/512)).to(device)
         self.sig_w2 = nn.init.constant_(torch.empty(512, num_action), 0.017).to(device)
         self.mu_b2 = nn.init.uniform_(torch.empty(num_action), -np.sqrt(3/512), np.sqrt(3/512)).to(device)
@@ -53,7 +84,7 @@ class NoisyDQN(nn.Module):
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = x.view(-1, 64*int(config.state_size[0]/8)*int(config.state_size[1]/8))
-        
+
         x = F.relu(self.noisy_dense(x, self.mu_w1, self.sig_w1, self.mu_b1, self.sig_b1, is_train))
         x = self.noisy_dense(x, self.mu_w2, self.sig_w2, self.mu_b2, self.sig_b2, is_train)
         return x
@@ -70,8 +101,3 @@ class NoisyDQN(nn.Module):
         b_fc = mu_b + (sig_b * eps_b)
 
         return torch.matmul(x, w_fc) + b_fc
-
-        
-
-
-

@@ -32,7 +32,7 @@ if __name__ == '__main__':
     target_model_ = model.DQN(config.action_size, "target").to(device)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
-    algorithm = "_DQN"
+    algorithm = "_DoubleDQN"
     agent = agent.DQNAgent(model_, target_model_, optimizer, device, algorithm)
 
     step = 0
@@ -93,7 +93,7 @@ if __name__ == '__main__':
                     agent.epsilon -= 1 / (config.run_step - config.start_train_step)
 
                 # 학습 수행
-                loss, maxQ = agent.train_model()
+                loss, maxQ = agent.train_model_double()
                 loss_list.append(loss)
                 max_Q_list.append(maxQ)
 
@@ -112,7 +112,6 @@ if __name__ == '__main__':
         if episode % config.print_episode == 0 and episode != 0:
             print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
                   (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
-
             if not config.load_model:
                 agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
 
