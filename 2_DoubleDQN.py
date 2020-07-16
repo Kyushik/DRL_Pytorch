@@ -17,7 +17,8 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+    env = UnityEnvironment(file_name=config.env_name)
+    # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
 
     # setting brain for unity
     default_brain = env.brain_names[0]
@@ -25,16 +26,14 @@ if __name__ == '__main__':
 
     train_mode = config.train_mode
 
-    if train_mode:
-        os.mkdir(config.save_path)
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model_ = model.DQN(config.action_size, "main").to(device)
     target_model_ = model.DQN(config.action_size, "target").to(device)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
-    agent = agent.DQNAgent(model_, target_model_, optimizer, device)
+    algorithm = "_DoubleDQN"
+    agent = agent.DQNAgent(model_, target_model_, optimizer, device, algorithm)
 
     step = 0
     episode = 0
@@ -94,7 +93,7 @@ if __name__ == '__main__':
                     agent.epsilon -= 1 / (config.run_step - config.start_train_step)
 
                 # 학습 수행
-                loss, maxQ = agent.train_model()
+                loss, maxQ = agent.train_model_double()
                 loss_list.append(loss)
                 max_Q_list.append(maxQ)
 

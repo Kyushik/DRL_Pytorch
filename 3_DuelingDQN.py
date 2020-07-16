@@ -17,7 +17,8 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+    env = UnityEnvironment(file_name=config.env_name)
+    # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
 
     # setting brain for unity
     default_brain = env.brain_names[0]
@@ -25,16 +26,14 @@ if __name__ == '__main__':
 
     train_mode = config.train_mode
 
-    if train_mode:
-        os.mkdir(config.save_path)
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model_ = model.DuelingDQN(config.action_size, "main").to(device)
     target_model_ = model.DuelingDQN(config.action_size, "target").to(device)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
-    agent = agent.DQNAgent(model_, target_model_, optimizer, device)
+    algorithm = "_DuelingDQN"
+    agent = agent.DQNAgent(model_, target_model_, optimizer, device, algorithm)
 
     step = 0
     episode = 0

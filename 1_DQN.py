@@ -19,6 +19,7 @@ if __name__ == '__main__':
     # set unity environment path (file_name)
     env = UnityEnvironment(file_name=config.env_name)
     # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+
     # setting brain for unity
     default_brain = env.brain_names[0]
     brain = env.brains[default_brain]
@@ -31,7 +32,8 @@ if __name__ == '__main__':
     target_model_ = model.DQN(config.action_size, "target").to(device)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
-    agent = agent.DQNAgent(model_, target_model_, optimizer, device)
+    algorithm = "_DQN"
+    agent = agent.DQNAgent(model_, target_model_, optimizer, device, algorithm)
 
     step = 0
     episode = 0

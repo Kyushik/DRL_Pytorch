@@ -15,13 +15,14 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # DQNAgent 클래스 -> DQN 알고리즘을 위한 다양한 함수 정의
 class DQNAgent():
-    def __init__(self, model, target_model, optimizer, device):
+    def __init__(self, model, target_model, optimizer, device, algorithm):
         # 클래스의 함수들을 위한 값 설정
         self.model = model
         self.target_model = target_model
         self.optimizer = optimizer
 
         self.device = device
+        self.algorithm = algorithm
 
         self.memory = deque(maxlen=config.mem_maxlen)
         self.obs_set = deque(maxlen=config.skip_frame*config.stack_frame)
@@ -29,7 +30,7 @@ class DQNAgent():
         self.epsilon = config.epsilon_init
 
         if not config.load_model:
-            self.writer = SummaryWriter('{}'.format(config.save_path))
+            self.writer = SummaryWriter('{}'.format(config.save_path + self.algorithm))
 
         self.update_target()
 
@@ -66,9 +67,9 @@ class DQNAgent():
     # 네트워크 모델 저장
     def save_model(self, load_model):
         if not load_model:
-            os.makedirs(config.save_path, exist_ok=True)
-            torch.save(self.model.state_dict(), config.save_path+'/model.pth')
-            print("Save Model: {}".format(config.save_path))
+            os.makedirs(config.save_path + self.algorithm, exist_ok=True)
+            torch.save(self.model.state_dict(), config.save_path + self.algorithm +'/model.pth')
+            print("Save Model: {}".format(config.save_path + self.algorithm))
 
     # 학습 수행
     def train_model(self):
