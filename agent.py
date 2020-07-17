@@ -191,10 +191,9 @@ class DQNAgent():
             done_batch.append(mini_batch[i][4])
 
         # 타겟값 계산
-        predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device), True)
+        predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device), is_train=True)
         target_Q = predict_Q.cpu().detach().numpy()
-        target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device), False).cpu().detach().numpy()
-
+        target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device), is_train=True).cpu().detach().numpy()
         max_Q = np.max(target_Q)
 
         for i in range(config.batch_size):
@@ -205,7 +204,9 @@ class DQNAgent():
 
         loss = F.smooth_l1_loss(predict_Q.to(self.device), torch.from_numpy(target_Q).to(self.device))
         self.optimizer.zero_grad()
+        a = list(self.model.parameters())[0]
         loss.backward()
         self.optimizer.step()
+
 
         return loss.item(), max_Q
