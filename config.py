@@ -1,7 +1,7 @@
 # Config
 import datetime
 
-state_size = [80,80,1]
+state_size = [40,80,1]
 action_size = 3
 
 load_model = False
@@ -32,8 +32,8 @@ epsilon_min = 0.1
 env_config = {}
 
 # Environment Path
-game = "Breakout"
-env_name = "./env/" + game + "/Windows/" + game
+game = "Pong"
+env_name = "./env/" + game + "/Linux/" + game
 
 # 모델 저장 및 불러오기 경로
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
