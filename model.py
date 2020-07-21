@@ -85,12 +85,12 @@ class NoisyLinearHay(nn.Module):
         self.b_sig = nn.Parameter(self.b_sig)
 
     def forward(self, x, train):
-        w_eps = torch.randn((self.n_out, self.n_in))
-        b_eps = torch.randn((self.n_out))
-
         if self.use_cuda:
-            w_eps = w_eps.cuda()
-            b_eps = b_eps.cuda()
+            w_eps = torch.randn((self.n_out, self.n_in)).cuda()
+            b_eps = torch.randn((self.n_out)).cuda()
+        else:
+            w_eps = torch.randn((self.n_out, self.n_in))
+            b_eps = torch.randn((self.n_out))
 
         if train:
             w = self.w_mu + self.w_sig * w_eps
