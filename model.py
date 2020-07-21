@@ -60,6 +60,83 @@ class DuelingDQN(nn.Module):
         return out
 
 
+class NoisyLinearHay(nn.Module):
+    def __init__(self, n_in, n_out, use_cuda=True):
+        super(NoisyLinearHay, self).__init__()
+        self.n_in = n_in
+        self.n_out = n_out
+        self.use_cuda = use_cuda
+
+        self.w_mu  = -np.sqrt(3/n_out) + torch.rand(n_out, n_in, requires_grad=True) * 2 * np.sqrt(3/n_out)
+        self.w_sig = torch.ones((n_out, n_in), requires_grad=True) * 0.017
+
+        self.b_mu  = -np.sqrt(3/n_out) + torch.rand(n_out, requires_grad=True) * 2 * np.sqrt(3/n_out)
+        self.b_sig = torch.ones((n_out), requires_grad=True) * 0.017
+
+        if use_cuda:
+            self.w_mu = self.w_mu.cuda()
+            self.w_sig = self.w_sig.cuda()
+            self.b_mu = self.b_mu.cuda()
+            self.b_sig = self.b_sig.cuda()
+
+        self.w_mu = nn.Parameter(self.w_mu)
+        self.w_sig = nn.Parameter(self.w_sig)
+        self.b_mu = nn.Parameter(self.b_mu)
+        self.b_sig = nn.Parameter(self.b_sig)
+
+    def forward(self, x, train):
+        w_eps = torch.randn((self.n_out, self.n_in))
+        b_eps = torch.randn((self.n_out))
+
+        if self.use_cuda:
+            w_eps = w_eps.cuda()
+            b_eps = b_eps.cuda()
+
+        if train:
+            w = self.w_mu + self.w_sig * w_eps
+            b = self.b_mu + self.b_sig * b_eps
+        else:
+            w = self.w_mu
+            b = self.b_mu
+
+        return F.linear(x, w, b)
+
+
+class NoisyDQNHay(nn.Module):
+    def __init__(self, num_action, use_cuda=True):
+        super(NoisyDQNHay, self).__init__()
+        self.use_cuda = use_cuda
+
+        input_channel = config.state_size[2] * config.stack_frame
+        self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
+
+        self.linear1 = NoisyLinearHay(
+            n_in=64*int(config.state_size[0]/8)*int(config.state_size[1]/8),
+            n_out=512,
+            use_cuda=use_cuda
+        )
+        self.linear2 = NoisyLinearHay(n_in=512, n_out=num_action, use_cuda=use_cuda)
+
+        if use_cuda:
+            self.conv1.cuda()
+            self.conv2.cuda()
+            self.conv3.cuda()
+
+    def forward(self, x, train=True):
+        x = (x-(255.0/2))/(255.0/2)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+
+        # noisy linear
+        x = F.relu(self.linear1(x, train))
+
+        return self.linear2(x, train)
+
+
 class NoisyDQN(nn.Module):
     def __init__(self, num_action, model_name, device):
         super(NoisyDQN, self).__init__()

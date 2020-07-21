@@ -199,35 +199,28 @@ class DQNAgent():
     def train_model_noisy(self):
         # 학습을 위한 미니 배치 데이터 샘플링
         mini_batch = random.sample(self.memory, config.batch_size)
-
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        next_state_batch = []
-        done_batch = []
-
-        for i in range(config.batch_size):
-            state_batch.append(mini_batch[i][0])
-            action_batch.append(mini_batch[i][1])
-            reward_batch.append(mini_batch[i][2])
-            next_state_batch.append(mini_batch[i][3])
-            done_batch.append(mini_batch[i][4])
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
 
         # 타겟값 계산
-        predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device), is_train=True)
-        target_Q = predict_Q.cpu().detach().numpy()
-        target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device), is_train=True).cpu().detach().numpy()
-        max_Q = np.max(target_Q)
+        Q = self.model(state_batch, train=True)
+        action_batch_onehot = torch.eye(3)[action_batch.type(torch.long)].cuda()
+        acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
-        for i in range(config.batch_size):
-            if done_batch[i]:
-                target_Q[i, action_batch[i]] = reward_batch[i]
-            else:
-                target_Q[i, action_batch[i]] = reward_batch[i] + config.discount_factor * np.amax(target_nextQ[i])
+        with torch.no_grad():
+            target_next_Q = self.target_model(next_state_batch, train=True)
+            max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
+            target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
 
-        loss = F.smooth_l1_loss(predict_Q.to(self.device), torch.from_numpy(target_Q).to(self.device))
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+        # print(f"max_Q: {max_Q}")
+
+        loss = F.smooth_l1_loss(acted_Q, target_Q)
+        # print(f"loss: {loss}")
         self.optimizer.zero_grad()
-        a = list(self.model.parameters())[0]
         loss.backward()
         self.optimizer.step()
 
