@@ -8,16 +8,16 @@ load_model = False
 train_mode = True
 
 batch_size = 32
-mem_maxlen = 50000
+mem_maxlen = 100000
 
 discount_factor = 0.99
-learning_rate = 0.00025
+learning_rate = 0.0001
 
 skip_frame = 4
 stack_frame = 4
 
 start_train_step = 10000
-run_step = 50000
+run_step = 250000
 test_step = 25000
 
 target_update_step = int(run_step/100)

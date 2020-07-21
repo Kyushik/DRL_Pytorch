@@ -29,6 +29,7 @@ class DQN(nn.Module):
         x = self.fc2(x)
         return x
 
+
 class DuelingDQN(nn.Module):
     def __init__(self, num_action, network_name):
         super(DuelingDQN, self).__init__()
