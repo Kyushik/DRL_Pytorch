@@ -3,6 +3,12 @@
 
 saved_models/
 
+/__pycache__/
+*.pyc
+*.log
+
+
+
 ### Unity ###
 /[Ll]ibrary/
 /[Tt]emp/
