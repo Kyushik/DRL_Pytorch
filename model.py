@@ -6,8 +6,9 @@ import config
 
 import numpy as np
 import math
+from collections import OrderedDict
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = config.device
 
 class DQN(nn.Module):
     def __init__(self, num_action, network_name):
@@ -35,10 +36,14 @@ class DuelingDQN(nn.Module):
         super(DuelingDQN, self).__init__()
         self.num_action = num_action
         input_channel = config.state_size[2]*config.stack_frame
+
         self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
-        self.fc1 = nn.Linear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512)
+
+        self.fc1_a = nn.Linear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512)
+        self.fc1_v = nn.Linear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512)
+
         self.fc2_a = nn.Linear(512, num_action)
         self.fc2_v = nn.Linear(512, 1)
 
@@ -48,17 +53,21 @@ class DuelingDQN(nn.Module):
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        # A stream : action advantage
-        x_a = self.fc2_a(x) # [bs, 4]
-        x_a_mean = x_a.mean(dim=1).unsqueeze(1) # [bs, 1]
-        x_a = x_a - x_a_mean.repeat(1, self.num_action) # [bs, 4]
-        # V stream : state value
-        x_v = self.fc2_v(x) # [bs, 1]
-        x_v = x_v.repeat(1, self.num_action) # [bs, 4]
-        out = x_a + x_v # [bs, 4]
-        return out
 
+        x_a = F.relu(self.fc1_a(x))
+        x_v = F.relu(self.fc1_v(x))
+
+        # A stream : action advantage
+        x_a = self.fc2_a(x_a) # [bs, num_action]
+        x_a_mean = x_a.mean(dim=1).unsqueeze(1) # [bs, 1]
+        x_a = x_a - x_a_mean.repeat(1, self.num_action) # [bs, num_action]
+
+        # V stream : state value
+        x_v = self.fc2_v(x_v) # [bs, 1]
+        x_v = x_v.repeat(1, self.num_action) # [bs, num_action]
+
+        out = x_a + x_v # [bs, num_action]
+        return out
 
 class NoisyLinearHay(nn.Module):
     def __init__(self, n_in, n_out, use_cuda=True):
@@ -138,14 +147,14 @@ class NoisyDQNHay(nn.Module):
 
 
 class NoisyDQN(nn.Module):
-    def __init__(self, num_action, model_name, device):
+    def __init__(self, num_action, model_name):
         super(NoisyDQN, self).__init__()
         input_channel = config.state_size[2]*config.stack_frame
         self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
-        self.noisylinear1 = NoisyLinear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512, device)
-        self.noisylinear2 = NoisyLinear(512, num_action, device)
+        self.noisylinear1 = NoisyLinear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512)
+        self.noisylinear2 = NoisyLinear(512, num_action)
 
     def forward(self, x, is_train):
         x = (x-(255.0/2))/(255.0/2)
@@ -165,13 +174,13 @@ class NoisyLinear(nn.Module):
         self.std_init = 0.017
 
         # weight related variables
-        self.w_mu = nn.Parameter(torch.empty(self.out_nl, self.in_nl)).to(device)
-        self.w_sigma = nn.Parameter(torch.empty(self.out_nl, self.in_nl)).to(device)
+        self.w_mu = nn.Parameter(torch.empty(self.out_nl, self.in_nl), requires_grad=True).to(device)
+        self.w_sigma = nn.Parameter(torch.empty(self.out_nl, self.in_nl), requires_grad=True).to(device)
         self.w_eps = torch.empty(self.out_nl, self.in_nl).to(device)
 
         # bias related variables
-        self.b_mu = nn.Parameter(torch.empty(self.out_nl)).to(device)
-        self.b_sigma = nn.Parameter(torch.empty(self.out_nl)).to(device)
+        self.b_mu = nn.Parameter(torch.empty(self.out_nl), requires_grad=True).to(device)
+        self.b_sigma = nn.Parameter(torch.empty(self.out_nl), requires_grad=True).to(device)
         self.b_eps = torch.empty(self.out_nl).to(device)
 
         self.init_params()
@@ -189,7 +198,6 @@ class NoisyLinear(nn.Module):
             b = self.b_mu.data
         return F.linear(x, w, b)
 
-
     def init_params(self):
         mu_dist_range = math.sqrt(3/self.in_nl)
         self.w_mu.data.uniform_(-mu_dist_range, mu_dist_range)
@@ -201,8 +209,95 @@ class NoisyLinear(nn.Module):
         self.w_eps = torch.normal(mean=0.0, std=1.0, size=self.w_mu.size()).to(device)
         self.b_pes = torch.normal(mean=0.0, std=1.0, size=self.b_mu.size()).to(device)
 
+class ICM(nn.Module):
+    def __init__(self, num_action, name):
+        super(ICM, self).__init__()
+        input_channel = config.state_size[2]*config.stack_frame
+        self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)
 
-#
+        # forward model
+        self.fc1_fm = nn.Linear(32*int(config.state_size[0]/16)*int(config.state_size[1]/16) + 1, 512)
+        self.fc2_fm = nn.Linear(512 + 1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16))
+
+        # inverse model
+        self.fc1_im = nn.Linear(2*32*int(config.state_size[0]/16)*int(config.state_size[1]/16), 256)
+        self.fc2_im = nn.Linear(256, num_action)
+
+    def forward(self, x_now, x_next, a_now):
+        # current state
+        x_now = (x_now-(255.0/2))/(255.0/2)
+        x_now = F.elu(self.conv1(x_now))
+        x_now = F.elu(self.conv2(x_now))
+        x_now = F.elu(self.conv3(x_now))
+        x_now = F.elu(self.conv4(x_now))
+        x_now_encode = x_now.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # encoding vector of current state
+
+        # next state
+        x_next = (x_next-(255.0/2))/(255.0/2)
+        x_next = F.elu(self.conv1(x_next))
+        x_next = F.elu(self.conv2(x_next))
+        x_next = F.elu(self.conv3(x_next))
+        x_next = F.elu(self.conv4(x_next))
+        x_next_encode = x_next.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # encoding vector of next state
+
+        # forward model
+        x_fm = torch.cat([x_now_encode, a_now.unsqueeze(1)], dim=1)
+        x_fm = F.relu(self.fc1_fm(x_fm))
+        x_fm = torch.cat([x_fm, a_now.unsqueeze(1)], dim=1)
+        x_fm = self.fc2_fm(x_fm) # predicted encoding vector of next state
+
+        # inverse model
+        x_encode = torch.cat([x_now_encode, x_next_encode], dim=1)
+        x_im = F.relu(self.fc1_im(x_encode))
+        x_im = F.softmax(self.fc2_im(x_im), dim=1) # (bs, 3)
+
+        return x_next_encode, x_fm, x_im
+
+
+class RND(nn.Module):
+    def __init__(self, num_action, name):
+        super(RND, self).__init__()
+        input_channel = config.state_size[2]*config.stack_frame
+
+        self.model_active = nn.Sequential(OrderedDict([
+            ('conv1' , nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ1', nn.ELU()),
+            ('conv2' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ2', nn.ELU()),
+            ('conv3' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ3', nn.ELU()),
+            ('conv4' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ4', nn.ELU()),
+        ]))
+
+        self.model_frozen = nn.Sequential(OrderedDict([
+            ('conv1' , nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ1', nn.ELU()),
+            ('conv2' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ1', nn.ELU()),
+            ('conv3' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ1', nn.ELU()),
+            ('conv4' , nn.Conv2d(in_channels=32, out_channels=32, kernel_size=4, stride=2, padding=1)),
+            ('activ1', nn.ELU()),
+        ]))
+
+    def forward(self, x):
+        # current state
+        x_next = (x-(255.0/2))/(255.0/2)
+        x_next = self.model_active(x_next)
+        x_next_encode = x_next.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # encoding vector of next state
+
+        x_next_t = (x-(255.0/2))/(255.0/2)
+        x_next_t = self.model_frozen(x_next_t)
+        x_next_encode_t = x_next_t.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # predicted encoding vector of next state
+
+        return x_next_encode, x_next_encode_t
+
+
+
 # class NoisyDQN(nn.Module):
 #     def __init__(self, num_action, network_name):
 #         super(NoisyDQN, self).__init__()
