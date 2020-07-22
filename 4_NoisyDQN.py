@@ -17,8 +17,8 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name)
-    # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+    # env = UnityEnvironment(file_name=config.env_name)
+    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(65535))
 
     # setting brain for unity
     default_brain = env.brain_names[0]
@@ -27,9 +27,13 @@ if __name__ == '__main__':
     train_mode = config.train_mode
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        use_cuda = True
+    else:
+        use_cuda = False
 
-    model_ = model.NoisyDQN(config.action_size, "main").to(device)
-    target_model_ = model.NoisyDQN(config.action_size, "target").to(device)
+    model_ = model.NoisyDQNHay(config.action_size, use_cuda=use_cuda)
+    target_model_ = model.NoisyDQNHay(config.action_size, use_cuda=use_cuda)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
     # print(list(model_.named_parameters()))
@@ -121,8 +125,9 @@ if __name__ == '__main__':
 
         # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록
         if episode % config.print_episode == 0 and episode != 0:
-            print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f}".format
-                  (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list)))
+            # print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f}".format
+            #       (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list)))
+            print(f"[{step:07d}/{config.run_step:d}] epi: {episode:04d}, reward: {np.mean(reward_list):.3f}, loss: {np.mean(loss_list):.6f}, maxQ: {np.mean(max_Q_list):.4f}, eps: {agent.epsilon:.3f}, linear2.w_sigma: {torch.mean(torch.abs(model_.linear2.w_sig)):.5f}, linear2.b_sigma: {torch.mean(torch.abs(model_.linear2.b_sig)):.5f}")
             if not config.load_model:
                 agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
 

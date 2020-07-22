@@ -61,9 +61,10 @@ class DQNAgent():
             # 랜덤하게 행동 결정
             return np.random.randint(0, config.action_size)
         else:
+            with torch.no_grad():
             # 네트워크 연산에 따라 행동 결정
-            Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
-            return np.argmax(Q.cpu().detach().numpy())
+                Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
+                return np.argmax(Q.cpu().detach().numpy())
 
     # 프레임을 skip하면서 설정에 맞게 stack
     def skip_stack_frame(self, obs):
@@ -115,36 +116,56 @@ class DQNAgent():
         # 학습을 위한 미니 배치 데이터 샘플링
         mini_batch = random.sample(self.memory, config.batch_size)
 
-        state_batch = []
-        action_batch = []
-        reward_batch = []
-        next_state_batch = []
-        done_batch = []
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
 
-        for i in range(config.batch_size):
-            state_batch.append(mini_batch[i][0])
-            action_batch.append(mini_batch[i][1])
-            reward_batch.append(mini_batch[i][2])
-            next_state_batch.append(mini_batch[i][3])
-            done_batch.append(mini_batch[i][4])
+        # print(f"\n [-] memory")
+        # print(f"state_batch : {state_batch.shape}, {state_batch.dtype}")
+        # print(f"action_batch : {action_batch.shape}, {action_batch.dtype}")
+        # print(f"reward_batch : {reward_batch.shape}, {reward_batch.dtype}")
+        # print(f"next_state_batch : {next_state_batch.shape}, {next_state_batch.dtype}")
+        # print(f"done_batch : {done_batch.shape}, {done_batch.dtype}")
+
+        # print(f"state_batch: {state_batch[0].shape}, next_state_batch: {next_state_batch[0].shape}")
+        # fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(12, 6))
+        #
+        # for i, state in enumerate(state_batch[0]):
+        #     axes[0, i].imshow(state)
+        # for i, state in enumerate(next_state_batch[0]):
+        #     axes[1, i].imshow(state)
+        # plt.show()
+
 
         # 타겟값 계산
-        predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device))
-        target_Q = predict_Q.cpu().detach().numpy()
-        target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device)).cpu().detach().numpy()
+        Q = self.model(state_batch)
+        # print(f"Q: {Q}")
+        action_batch_onehot = torch.eye(3)[action_batch.type(torch.long)].cuda()
+        acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
+        # print("acted_Q")
+        # print(acted_Q)
 
-        max_Q = np.max(target_Q)
+        with torch.no_grad():
+            target_next_Q = self.target_model(next_state_batch)
+            max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
+            target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
 
-        for i in range(config.batch_size):
-            if done_batch[i]:
-                target_Q[i, action_batch[i]] = reward_batch[i]
-            else:
-                target_Q[i, action_batch[i]] = reward_batch[i] + config.discount_factor * np.amax(target_nextQ[i])
+        # print(f"target_next_Q: {target_next_Q}")
+        # print(f"max_next_Q: {max_next_Q}")
+        # print("target_Q")
+        # print(target_Q)
 
-        loss = F.smooth_l1_loss(predict_Q.to(self.device), torch.from_numpy(target_Q).to(self.device))
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+        # print(f"max_Q: {max_Q}")
+
+        loss = F.smooth_l1_loss(acted_Q, target_Q)
+        # print(f"loss: {loss}")
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        # print("--------------------------------------------")
 
         return loss.item(), max_Q
 
@@ -299,6 +320,7 @@ class DQNAgent():
         loss_rl.backward(retain_graph=True)
         loss_fm.backward(retain_graph=True)
         loss_im.backward(retain_graph=True)
+
         self.optimizer.step()
 
         return loss.item(), max_Q, config.intrinsic_coeff*reward_i.cpu().detach().numpy(), loss_rl.item(), loss_fm.item(), loss_im.item()

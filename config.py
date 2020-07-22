@@ -17,7 +17,8 @@ learning_rate = 0.0001
 skip_frame = 4
 stack_frame = 4
 
-start_train_step = 25000
+start_train_step = 10000
+
 run_step = 250000
 test_step = 25000
 
@@ -43,6 +44,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Environment Path
 game = "Pong"
+
 env_name = "./env/" + game + "/Windows/" + game
 
 # 모델 저장 및 불러오기 경로

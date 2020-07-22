@@ -17,8 +17,8 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name)
-    # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+    # env = UnityEnvironment(file_name=config.env_name)
+    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(65535))
 
     # setting brain for unity
     default_brain = env.brain_names[0]
@@ -88,6 +88,7 @@ if __name__ == '__main__':
             step += 1
 
             if step > config.start_train_step and train_mode:
+            # if step > 100:  # for debug
                 # Epsilon 감소
                 if agent.epsilon > config.epsilon_min:
                     agent.epsilon -= 1 / (config.run_step - config.start_train_step)
@@ -110,8 +111,9 @@ if __name__ == '__main__':
 
         # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록
         if episode % config.print_episode == 0 and episode != 0:
-            print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
-                  (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
+            # print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
+            #       (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
+            print(f"[{step:07d}/{config.run_step:d}] epi: {episode:04d}, reward: {np.mean(reward_list):.3f}, loss: {np.mean(loss_list):.6f}, maxQ: {np.mean(max_Q_list):.4f}, eps: {agent.epsilon:.3f}")
 
             if not config.load_model:
                 agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
