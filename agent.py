@@ -37,7 +37,7 @@ class DQNAgent():
         self.update_target()
 
         if config.load_model == True:
-            self.model.state_dict(torch.load(config.load_path))
+            self.model.load_state_dict(torch.load(config.load_path))
             print("Model is loaded from {}".format(config.load_path))
 
     # Epsilon greedy 기법에 따라 행동 결정
@@ -211,7 +211,7 @@ class DQNAgent():
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
-            target_next_Q = self.target_model(next_state_batch, train=True)
+            target_next_Q = self.target_model(next_state_batch, train=False)
             max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
             target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
 
