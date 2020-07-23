@@ -17,7 +17,6 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    # env = UnityEnvironment(file_name=config.env_name)
     env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(65535))
 
     # setting brain for unity
@@ -36,16 +35,8 @@ if __name__ == '__main__':
     target_model_ = model.NoisyDQNHay(config.action_size, use_cuda=use_cuda)
     optimizer = optim.Adam(model_.parameters(), lr=config.learning_rate)
 
-    # print(list(model_.named_parameters()))
-    # print(list(model_.parameters()))
-    # for name, param in model_.state_dict().items():
-    #     print("------")
-    #     print(name, param.size())
-
-
     for name, _ in model_.named_parameters():
         print(name)
-
 
     algorithm = "_NoisyDQN"
     agent = agent.DQNAgent(model_, target_model_, optimizer, device, algorithm)
@@ -106,9 +97,6 @@ if __name__ == '__main__':
             if step > config.start_train_step and train_mode:
                 # 학습 수행
                 loss, maxQ = agent.train_model_noisy()
-                # print(step)
-                # print(loss)
-                # print(maxQ)
                 loss_list.append(loss)
                 max_Q_list.append(maxQ)
 
@@ -125,9 +113,8 @@ if __name__ == '__main__':
 
         # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록
         if episode % config.print_episode == 0 and episode != 0:
-            # print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f}".format
-            #       (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list)))
             print(f"[{step:07d}/{config.run_step:d}] epi: {episode:04d}, reward: {np.mean(reward_list):.3f}, loss: {np.mean(loss_list):.6f}, maxQ: {np.mean(max_Q_list):.4f}, eps: {agent.epsilon:.3f}, linear2.w_sigma: {torch.mean(torch.abs(model_.linear2.w_sig)):.5f}, linear2.b_sigma: {torch.mean(torch.abs(model_.linear2.b_sig)):.5f}")
+            
             if not config.load_model:
                 agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
 
