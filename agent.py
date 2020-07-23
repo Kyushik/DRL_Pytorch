@@ -236,22 +236,28 @@ class DQNAgent():
         next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
         done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
 
-
-        z = torch.linspace(config.vmin, config.vmax, config.atoms).view(1, 1, config.atoms).to(self.device)
-
         prob = self.model(state_batch)
+        print("make action ...")
         action = action_batch.unsqueeze(dim=-1).unsqueeze(dim=-1).expand(-1, -1, config.atoms).long()
+
+
+        z_gpu = torch.linspace(config.vmin, config.vmax, config.atoms).view(1, 1, config.atoms).to(self.device)
+        z_cpu = torch.linspace(config.vmin, config.vmax, config.atoms).view(1, 1, config.atoms)
+        print("gather...")
         prob_current_action = prob.gather(1, action).squeeze()
-        dist = prob * z
+        dist = prob * z_gpu
 
         Q = torch.sum(dist, dim=-1)
 
-        # target distribution 계산하기
-        with torch.no_grad():
-            target_dist = torch.zeros(config.batch_size, config.atoms, requires_grad=False).to(self.device)
 
-            prob_next = self.target_model(next_state_batch)
-            dist_next = prob_next * z
+        print("do for-loop")
+        # target distribution 계산하기
+
+        target_dist = torch.zeros(config.batch_size, config.atoms, requires_grad=False)
+
+        with torch.no_grad():
+            prob_next = self.target_model(next_state_batch).cpu().detach()
+            dist_next = prob_next * z_cpu
             Q_next = torch.sum(dist_next, dim=-1)
 
             # projection
@@ -281,7 +287,7 @@ class DQNAgent():
 
                 else:
                     for j in range(config.atoms):
-                        Tz = r + config.discount_factor * z[0, 0, j]
+                        Tz = r + config.discount_factor * z_cpu[0, 0, j]
                         Tz = torch.clamp(Tz, config.vmin, config.vmax)
                         b = (Tz - config.vmin) / self.model.delta_z
                         l = torch.floor(b).long()
@@ -297,10 +303,12 @@ class DQNAgent():
         target_Q = torch.sum(target_dist, dim=-1)
         max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
 
-        loss = -(target_dist * prob_current_action.log()).sum(-1)
+        target_dist_gpu = target_dist.to(self.device)
+        loss = -(target_dist_gpu * prob_current_action.log()).sum(-1)
         loss = loss.mean()
+        loss_out = loss.cpu().detach().numpy()
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        return loss, max_Q
+        return loss_out, max_Q

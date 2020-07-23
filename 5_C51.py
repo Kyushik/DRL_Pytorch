@@ -120,6 +120,7 @@ while step < config.run_step + config.test_step:
     reward_list.append(episode_rewards)
     episode += 1
 
+
     # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록
     if episode % config.print_episode == 0 and episode != 0:
         # print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
