@@ -142,7 +142,7 @@ class DQNAgent():
         # 타겟값 계산
         Q = self.model(state_batch)
         # print(f"Q: {Q}")
-        action_batch_onehot = torch.eye(3)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
         # print("acted_Q")
         # print(acted_Q)
@@ -281,7 +281,7 @@ class DQNAgent():
     def train_model_ICM(self):
         # 학습을 위한 미니 배치 데이터 샘플링
         mini_batch = random.sample(self.memory, config.batch_size)
-
+        
         state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
         action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
         reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
@@ -296,7 +296,7 @@ class DQNAgent():
 
         Q = self.model(state_batch)
         # print(f"Q: {Q}")
-        action_batch_onehot = torch.eye(3)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
