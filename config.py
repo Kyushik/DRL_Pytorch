@@ -43,7 +43,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Environment Path
 game = "Pong"
-
 env_name = "./env/" + game + "/Windows/" + game
 
 # 모델 저장 및 불러오기 경로

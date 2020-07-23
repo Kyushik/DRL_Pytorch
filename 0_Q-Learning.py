@@ -133,7 +133,3 @@ if __name__ == '__main__':
             reward_list = []
 
     env.close()
-
-
-
-

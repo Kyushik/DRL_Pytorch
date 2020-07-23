@@ -1,8 +1,6 @@
 # Import Libraries
 import numpy as np
-import random
 import time
-from collections import deque
 from mlagents.envs import UnityEnvironment
 
 # Parameter Setting 
@@ -16,7 +14,7 @@ print_episode = 10
 train_mode = False 
 
 # Environment Path 
-game = "Pong"
+game = "GridWorld"
 env_name = "./env/" + game + "/Windows/" + game
 
 def get_action():
@@ -26,7 +24,7 @@ def get_action():
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=env_name)
+    env = UnityEnvironment(file_name=env_name, worker_id=np.random.randint(65535))
 
     # setting brain for unity 
     default_brain = env.brain_names[0]
@@ -57,12 +55,12 @@ if __name__ == '__main__':
             env_info = env.step(action)[default_brain]
 
             # Get next state, reward, done information 
-            next_state = 255 * np.array(env_info.vector_observations[0])
+            next_state = str(env_info.vector_observations[0])
             reward = env_info.rewards[0]
             episode_rewards += reward
             done = env_info.local_done[0]
 
-            time.sleep(0.02) 
+            time.sleep(0.0) 
 
             # Update state info 
             state = next_state
@@ -73,11 +71,7 @@ if __name__ == '__main__':
 
         # Print Progress
         if episode != 0 and episode % print_episode == 0:
-            print("Step: {} / Episode: {} / Mean Rewards: {:.3f}".format(step, episode, np.mean(reward_list)))
+            print(f"step: {step:05d} epi: {episode:04d}, reward: {np.mean(reward_list):.3f}")
             reward_list = []
 
     env.close()
-
-
-
-
