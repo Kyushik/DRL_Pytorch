@@ -226,3 +226,81 @@ class DQNAgent():
 
 
         return loss.item(), max_Q
+
+    def train_C51(self):
+        # 학습을 위한 미니 배치 데이터 샘플링
+        mini_batch = random.sample(self.memory, config.batch_size)
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
+
+
+        z = torch.linspace(config.vmin, config.vmax, config.atoms).view(1, 1, config.atoms).to(self.device)
+
+        prob = self.model(state_batch)
+        action = action_batch.unsqueeze(dim=-1).unsqueeze(dim=-1).expand(-1, -1, config.atoms).long()
+        prob_current_action = prob.gather(1, action).squeeze()
+        dist = prob * z
+
+        Q = torch.sum(dist, dim=-1)
+
+        # target distribution 계산하기
+        with torch.no_grad():
+            target_dist = torch.zeros(config.batch_size, config.atoms, requires_grad=False).to(self.device)
+
+            prob_next = self.target_model(next_state_batch)
+            dist_next = prob_next * z
+            Q_next = torch.sum(dist_next, dim=-1)
+
+            # projection
+            for i in range(config.batch_size):
+                action_max = torch.argmax(Q_next[i])
+                done = done_batch[i]
+
+                r = reward_batch[i]
+
+                if done:
+                    Tz = r
+                    # Bounding Tz
+                    if Tz >= config.vmax:
+                        Tz = config.vmax
+                    elif Tz <= config.vmin:
+                        Tz = config.vmin
+
+                    b = (Tz - config.vmin) / self.model.delta_z
+                    l = torch.floor(b).long()
+                    u = torch.ceil(b).long()
+
+                    target_dist[i, l] += (u - b)
+                    target_dist[i, u] += (b - l)
+
+                    if l==u:
+                        target_dist[i, l] = 1
+
+                else:
+                    for j in range(config.atoms):
+                        Tz = r + config.discount_factor * z[0, 0, j]
+                        Tz = torch.clamp(Tz, config.vmin, config.vmax)
+                        b = (Tz - config.vmin) / self.model.delta_z
+                        l = torch.floor(b).long()
+                        u = torch.ceil(b).long()
+
+                        target_dist[i, l] += prob_next[i, action_max, j] * (u-b)
+                        target_dist[i, u] += prob_next[i, action_max, j] * (b-l)
+
+                    sum_target_dist = torch.sum(target_dist[i,:])
+                    for j in range(config.atoms):
+                        target_dist[i, j] = target_dist[i, j] / sum_target_dist
+
+        target_Q = torch.sum(target_dist, dim=-1)
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+
+        loss = -(target_dist * prob_current_action.log()).sum(-1)
+        loss = loss.mean()
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss, max_Q

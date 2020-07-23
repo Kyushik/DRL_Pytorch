@@ -17,7 +17,7 @@ skip_frame = 4
 stack_frame = 4
 
 start_train_step = 10000
-run_step = 250000
+run_step = 500000
 test_step = 25000
 
 target_update_step = int(run_step/100)
@@ -31,6 +31,12 @@ epsilon_min = 0.1
 # env_config = {'gridSize':3}
 env_config = {}
 
+
+""" C51 """
+atoms = 51
+vmin = -10
+vmax = 10
+
 # Environment Path
 game = "Pong"
 env_name = "./env/" + game + "/Linux/" + game
@@ -39,4 +45,4 @@ env_name = "./env/" + game + "/Linux/" + game
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
 
 save_path = "./saved_models/" + game + "/" + date_time
-load_path = "./saved_models/" + game + "/20200716-20-32-00_NoisyDQN/model.pth"
+load_path = "./saved_models/" + game + "/20200722-00-28-43_NoisyDQN/model.pth"

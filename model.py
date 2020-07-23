@@ -202,46 +202,68 @@ class NoisyLinear(nn.Module):
         self.b_pes = torch.normal(mean=0.0, std=1.0, size=self.b_mu.size()).to(device)
 
 
-#
-# class NoisyDQN(nn.Module):
-#     def __init__(self, num_action, network_name):
-#         super(NoisyDQN, self).__init__()
-#         input_channel = config.state_size[2]*config.stack_frame
-#         self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
-#         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
-#         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
-#
-#         flat_size = 64*int(config.state_size[0]/8)*int(config.state_size[1]/8)
-#         self.mu_w1 = nn.init.uniform_(torch.empty(flat_size, 512), -np.sqrt(3/flat_size), np.sqrt(3/flat_size)).to(device)
-#         self.sig_w1 = nn.init.constant_(torch.empty(flat_size, 512), 0.017).to(device)
-#         self.mu_b1 = nn.init.uniform_(torch.empty(512), -np.sqrt(3/flat_size), np.sqrt(3/flat_size)).to(device)
-#         self.sig_b1 = nn.init.constant_(torch.empty(512), 0.017).to(device)
-#
-#         self.mu_w2= nn.init.uniform_(torch.empty(512, num_action), -np.sqrt(3/512), np.sqrt(3/512)).to(device)
-#         self.sig_w2 = nn.init.constant_(torch.empty(512, num_action), 0.017).to(device)
-#         self.mu_b2 = nn.init.uniform_(torch.empty(num_action), -np.sqrt(3/512), np.sqrt(3/512)).to(device)
-#         self.sig_b2 = nn.init.constant_(torch.empty(num_action), 0.017).to(device)
-#
-#     def forward(self, x, is_train):
-#         x = (x-(255.0/2))/(255.0/2)
-#         x = F.relu(self.conv1(x))
-#         x = F.relu(self.conv2(x))
-#         x = F.relu(self.conv3(x))
-#         x = x.view(-1, 64*int(config.state_size[0]/8)*int(config.state_size[1]/8))
-#
-#         x = F.relu(self.noisy_dense(x, self.mu_w1, self.sig_w1, self.mu_b1, self.sig_b1, is_train))
-#         x = self.noisy_dense(x, self.mu_w2, self.sig_w2, self.mu_b2, self.sig_b2, is_train)
-#         return x
-#
-#     def noisy_dense(self, x, mu_w, sig_w, mu_b, sig_b, is_train):
-#         if is_train:
-#             eps_w = torch.randn(sig_w.size()).to(device)
-#             eps_b = torch.randn(sig_b.size()).to(device)
-#         else:
-#             eps_w = torch.zeros_like(sig_w).to(device)
-#             eps_b = torch.zeros_like(sig_b).to(device)
-#
-#         w_fc = mu_w + (sig_w * eps_w)
-#         b_fc = mu_b + (sig_b * eps_b)
-#
-#         return torch.matmul(x, w_fc) + b_fc
+def init(module, weight_init, bias_init, gain=1, mode=None, nonlinearity='relu'):
+    if mode is not None:
+        weight_init(module.weight.data, mode=mode, nonlinearity=nonlinearity)
+    else:
+        weight_init(module.weight.data, gain=gain)
+    bias_init(module.bias.data)
+    return module
+
+
+class C51(nn.Module):
+    def __init__(self, num_inputs, hidden_size=512, num_actions=4,
+                       atoms=51, vmin=-10, vmax=10, use_cuda=True):
+        super(C51, self).__init__()
+        self.atoms = atoms
+        self.vmin  = vmin
+        self.vmax  = vmax
+        self.delta_z = (vmax - vmin) / (atoms - 1)
+        self.num_actions   = num_actions
+        self.use_cuda = use_cuda
+
+
+        # init_ = lambda m: init(m,
+        #                        nn.init.kaiming_uniform_,
+        #                        lambda x: nn.init.constant_(x, 0),
+        #                        nonlinearity='relu',
+        #                        mode='fan_in')
+        # init2_ = lambda m: init(m,
+        #                        nn.init.kaiming_uniform_,
+        #                        lambda x: nn.init.constant_(x, 0),
+        #                        nonlinearity='relu',
+        #                        mode='fan_in')
+        #
+        #
+        # self.conv1 = init_(nn.Conv2d(num_inputs, 32, 8, stride=4))
+        # self.conv2 = init_(nn.Conv2d(32, 64, 4, stride=2))
+        # self.conv3 = init_(nn.Conv2d(64, 32, 3, stride=1))
+
+        self.conv1 = nn.Conv2d(num_inputs, 32, 8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, 4, stride=2)
+        self.conv3 = nn.Conv2d(64, 32, 3, stride=1)
+
+        self.fc1 = nn.Linear(192,      hidden_size)
+        self.fc2 = nn.Linear(hidden_size, num_actions*atoms)
+
+        if use_cuda:
+            self.conv1.cuda()
+            self.conv2.cuda()
+            self.conv3.cuda()
+            self.fc1.cuda()
+            self.fc2.cuda()
+
+
+    def forward(self, x):
+        x = (x-(255.0/2))/(255.0/2)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        x_batch = x.view(-1, self.num_actions, self.atoms)
+        y = F.log_softmax(x_batch, dim=2).exp() # y is of shape [batch x action x atoms]
+
+        return y
