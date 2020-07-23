@@ -17,7 +17,6 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    # env = UnityEnvironment(file_name=config.env_name)
     env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(65535))
 
     # setting brain for unity
@@ -88,31 +87,28 @@ if __name__ == '__main__':
             step += 1
 
             if step > config.start_train_step and train_mode:
-            # if step > 100:  # for debug
-                # Epsilon 감소
+                # Decrease Epsilon
                 if agent.epsilon > config.epsilon_min:
                     agent.epsilon -= 1 / (config.run_step - config.start_train_step)
 
-                # 학습 수행
+                # Train Model
                 loss, maxQ = agent.train_model()
                 loss_list.append(loss)
                 max_Q_list.append(maxQ)
 
-                # 타겟 네트워크 업데이트
+                # Update Target Network
                 if step % (config.target_update_step) == 0:
                     agent.update_target()
 
-            # 네트워크 모델 저장
+            # Save Network Model
             if step % config.save_step == 0 and step != 0 and train_mode:
                 agent.save_model(config.load_model)
 
         reward_list.append(episode_rewards)
         episode += 1
 
-        # 게임 진행 상황 출력 및 텐서 보드에 보상과 손실함수 값 기록
+        # Print Progress and Update Info to Tensorboard
         if episode % config.print_episode == 0 and episode != 0:
-            # print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
-            #       (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
             print(f"[{step:07d}/{config.run_step:d}] epi: {episode:04d}, reward: {np.mean(reward_list):.3f}, loss: {np.mean(loss_list):.6f}, maxQ: {np.mean(max_Q_list):.4f}, eps: {agent.epsilon:.3f}")
 
             if not config.load_model:
