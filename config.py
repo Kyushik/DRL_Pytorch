@@ -18,7 +18,6 @@ skip_frame = 4
 stack_frame = 4
 
 start_train_step = 10000
-
 run_step = 250000
 test_step = 25000
 
@@ -51,4 +50,4 @@ env_name = "./env/" + game + "/Windows/" + game
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
 
 save_path = "./saved_models/" + game + "/" + date_time
-load_path = "./saved_models/" + game + "/20200722-16-21-23_RND"
+load_path = "./saved_models/" + game + "/20200722-16-52-13_RND"

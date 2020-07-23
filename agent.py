@@ -19,7 +19,7 @@ class DQNAgent():
     def __init__(self, model, target_model, optimizer, device, algorithm):
         # 클래스의 함수들을 위한 값 설정
 
-        if algorithm == "_RND" or "_ICM":
+        if algorithm == ("_RND" or "_ICM"):
             self.model = model[0]
             self.model_a = model[1]
         else:
@@ -47,25 +47,51 @@ class DQNAgent():
             try:
                 self.model_a
             except:
-                self.model.load_state_dict(torch.load(config.load_path+'/model.pth'))
+                self.model.load_state_dict(torch.load(config.load_path+'/model.pth'), map_location=self.device)
+                self.model.to(self.deivce)
+                if config.train_mode: # train mode
+                    self.model.train()
+                else: # evaluation mode
+                    self.model.eval()
             else:
-                checkpoint = torch.load(config.load_path+'/model.pth')
+                checkpoint = torch.load(config.load_path+'/model.pth', map_location=self.device)
                 self.model.load_state_dict(checkpoint['model'])
                 self.model_a.load_state_dict(checkpoint['model_a'])
+                self.model.to(self.device)
+                self.model_a.to(self.device)
+                if config.train_mode: # train mode
+                    self.model.train()
+                    self.model_a.train()
+                else: # evaluation mode
+                    self.model.eval()
+                    self.model_a.eval()
+
+            # # 모델의 state_dict 출력
+            # print("Model's state_dict:")
+            # for param_tensor in self.model.state_dict():
+            #     print(param_tensor, "\t", self.model.state_dict()[param_tensor].size())
+            # print("----- and -----")
+            # for param_tensor in self.model_a.state_dict():
+            #     print(param_tensor, "\t", self.model_a.state_dict()[param_tensor].size())
 
             print("Model is loaded from {}".format(config.load_path+'/model.pth'))
 
     # Epsilon greedy 기법에 따라 행동 결정
     def get_action(self, state):
-        if self.epsilon > np.random.rand():
-            # 랜덤하게 행동 결정
-            return np.random.randint(0, config.action_size)
+        if config.train_mode:
+            if self.epsilon > np.random.rand():
+                # 랜덤하게 행동 결정
+                return np.random.randint(0, config.action_size)
+            else:
+                with torch.no_grad():
+                # 네트워크 연산에 따라 행동 결정
+                    Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
+                    return np.argmax(Q.cpu().detach().numpy())
         else:
             with torch.no_grad():
             # 네트워크 연산에 따라 행동 결정
                 Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
                 return np.argmax(Q.cpu().detach().numpy())
-
     # 프레임을 skip하면서 설정에 맞게 stack
     def skip_stack_frame(self, obs):
         self.obs_set.append(obs)
@@ -122,23 +148,6 @@ class DQNAgent():
         next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
         done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
 
-        # print(f"\n [-] memory")
-        # print(f"state_batch : {state_batch.shape}, {state_batch.dtype}")
-        # print(f"action_batch : {action_batch.shape}, {action_batch.dtype}")
-        # print(f"reward_batch : {reward_batch.shape}, {reward_batch.dtype}")
-        # print(f"next_state_batch : {next_state_batch.shape}, {next_state_batch.dtype}")
-        # print(f"done_batch : {done_batch.shape}, {done_batch.dtype}")
-
-        # print(f"state_batch: {state_batch[0].shape}, next_state_batch: {next_state_batch[0].shape}")
-        # fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(12, 6))
-        #
-        # for i, state in enumerate(state_batch[0]):
-        #     axes[0, i].imshow(state)
-        # for i, state in enumerate(next_state_batch[0]):
-        #     axes[1, i].imshow(state)
-        # plt.show()
-
-
         # 타겟값 계산
         Q = self.model(state_batch)
         # print(f"Q: {Q}")
@@ -151,11 +160,6 @@ class DQNAgent():
             target_next_Q = self.target_model(next_state_batch)
             max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
             target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
-
-        # print(f"target_next_Q: {target_next_Q}")
-        # print(f"max_next_Q: {max_next_Q}")
-        # print("target_Q")
-        # print(target_Q)
 
         max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
         # print(f"max_Q: {max_Q}")
@@ -237,45 +241,6 @@ class DQNAgent():
         self.optimizer.step()
 
         return loss.item(), max_Q
-
-
-    # # 학습 수행
-    # def train_model_noisy(self):
-    #     # 학습을 위한 미니 배치 데이터 샘플링
-    #     mini_batch = random.sample(self.memory, config.batch_size)
-    #
-    #     state_batch = []
-    #     action_batch = []
-    #     reward_batch = []
-    #     next_state_batch = []
-    #     done_batch = []
-    #
-    #     for i in range(config.batch_size):
-    #         state_batch.append(mini_batch[i][0])
-    #         action_batch.append(mini_batch[i][1])
-    #         reward_batch.append(mini_batch[i][2])
-    #         next_state_batch.append(mini_batch[i][3])
-    #         done_batch.append(mini_batch[i][4])
-    #
-    #     # 타겟값 계산
-    #     predict_Q = self.model(torch.FloatTensor(state_batch).to(self.device), is_train=True)
-    #     target_Q = predict_Q.cpu().detach().numpy()
-    #     target_nextQ = self.target_model(torch.FloatTensor(next_state_batch).to(self.device), is_train=True).cpu().detach().numpy()
-    #     max_Q = np.max(target_Q)
-    #
-    #     for i in range(config.batch_size):
-    #         if done_batch[i]:
-    #             target_Q[i, action_batch[i]] = reward_batch[i]
-    #         else:
-    #             target_Q[i, action_batch[i]] = reward_batch[i] + config.discount_factor * np.amax(target_nextQ[i])
-    #
-    #     loss = F.smooth_l1_loss(predict_Q.to(self.device), torch.from_numpy(target_Q).to(self.device))
-    #     self.optimizer.zero_grad()
-    #     loss.backward()
-    #     self.optimizer.step()
-    #
-    #     return loss.item(), max_Q
-
 
     # 학습 수행
     def train_model_ICM(self):
