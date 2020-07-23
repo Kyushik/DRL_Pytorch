@@ -14,11 +14,11 @@ mem_maxlen = 100000
 discount_factor = 0.99
 learning_rate = 0.0001
 
-skip_frame = 4
-stack_frame = 4
+skip_frame = 1
+stack_frame = 1
 
 start_train_step = 10000
-run_step = 250000
+run_step = 100000
 test_step = 25000
 
 target_update_step = int(run_step/100)
