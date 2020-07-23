@@ -2,8 +2,8 @@
 import datetime
 import torch
 
-state_size = [80,80,3]
-action_size = 4
+state_size = [40,80,1]
+action_size = 3
 
 load_model = False
 train_mode = True
@@ -14,11 +14,11 @@ mem_maxlen = 100000
 discount_factor = 0.99
 learning_rate = 0.0001
 
-skip_frame = 1
-stack_frame = 1
+skip_frame = 4
+stack_frame = 4
 
 start_train_step = 10000
-run_step = 100000
+run_step = 250000
 test_step = 25000
 
 target_update_step = int(run_step/100)
@@ -36,17 +36,17 @@ extrinsic_coeff = 1.0
 intrinsic_coeff = 0.01
 
 # Environment Setting
-env_config = {'gridSize':3}
-# env_config = {}
+# env_config = {'gridSize':3}
+env_config = {}
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Environment Path
-game = "GridWorld"
+game = "Pong"
 env_name = "./env/" + game + "/Windows/" + game
 
 # 모델 저장 및 불러오기 경로
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
 
 save_path = "./saved_models/" + game + "/" + date_time
-load_path = "./saved_models/" + game + "/20200721-20-44-39_DoubleDQN/model.pth"
+load_path = "./saved_models/" + game + "/20200722-16-52-13_RND"

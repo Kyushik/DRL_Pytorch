@@ -50,6 +50,9 @@ if __name__ == '__main__':
     # print(f"param_active_list : {param_active_list}")
     # print(f"param_frozen_list : {param_frozen_list}")
 
+    # print(f"model : {list(model_.parameters())}")
+    # print(f"model_a : {list(param_active_list)}")
+
     optimizer = optim.Adam(list(model_.parameters()) + list(param_active_list), lr=config.learning_rate)
     algorithm = "_RND"
     agent = agent.DQNAgent(models, target_model_, optimizer, device, algorithm)
@@ -135,8 +138,8 @@ if __name__ == '__main__':
                   (step, episode, np.mean(reward_list), np.mean(loss_list), config.lamb*np.mean(loss_rl_list),
                   config.beta*np.mean(loss_fm_list), np.mean(max_Q_list), 100*np.mean(r_i_list)))
 
-            if not config.load_model:
-                agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
+            # if not config.load_model:
+            #     agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
 
             if train_mode:
                 agent.write_scalar_ICM(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list),

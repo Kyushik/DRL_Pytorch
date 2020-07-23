@@ -45,26 +45,53 @@ class DQNAgent():
         if config.load_model == True:
             try:
                 self.model_a
+
             except:
-                self.model.load_state_dict(torch.load(config.load_path+'/model.pth'))
+                self.model.load_state_dict(torch.load(config.load_path+'/model.pth'), map_location=self.device)
+                self.model.to(self.deivce)
+                if config.train_mode: # train mode
+                    self.model.train()
+                else: # evaluation mode
+                    self.model.eval()
             else:
-                checkpoint = torch.load(config.load_path+'/model.pth')
+                checkpoint = torch.load(config.load_path+'/model.pth', map_location=self.device)
                 self.model.load_state_dict(checkpoint['model'])
                 self.model_a.load_state_dict(checkpoint['model_a'])
+                self.model.to(self.device)
+                self.model_a.to(self.device)
+                if config.train_mode: # train mode
+                    self.model.train()
+                    self.model_a.train()
+                else: # evaluation mode
+                    self.model.eval()
+                    self.model_a.eval()
+
+            # # 모델의 state_dict 출력
+            # print("Model's state_dict:")
+            # for param_tensor in self.model.state_dict():
+            #     print(param_tensor, "\t", self.model.state_dict()[param_tensor].size())
+            # print("----- and -----")
+            # for param_tensor in self.model_a.state_dict():
+            #     print(param_tensor, "\t", self.model_a.state_dict()[param_tensor].size())
 
             print("Model is loaded from {}".format(config.load_path+'/model.pth'))
 
     # Epsilon greedy 기법에 따라 행동 결정
     def get_action(self, state):
-        if self.epsilon > np.random.rand():
-            # 랜덤하게 행동 결정
-            return np.random.randint(0, config.action_size)
+        if config.train_mode:
+            if self.epsilon > np.random.rand():
+                # 랜덤하게 행동 결정
+                return np.random.randint(0, config.action_size)
+            else:
+                with torch.no_grad():
+                # 네트워크 연산에 따라 행동 결정
+                    Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
+                    return np.argmax(Q.cpu().detach().numpy())
         else:
             with torch.no_grad():
             # 네트워크 연산에 따라 행동 결정
                 Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
                 return np.argmax(Q.cpu().detach().numpy())
-
     # 프레임을 skip하면서 설정에 맞게 stack
     def skip_stack_frame(self, obs):
         self.obs_set.append(obs)
@@ -241,7 +268,7 @@ class DQNAgent():
     def train_model_ICM(self):
         # 학습을 위한 미니 배치 데이터 샘플링
         mini_batch = random.sample(self.memory, config.batch_size)
-        
+
         state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
         action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
         reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)

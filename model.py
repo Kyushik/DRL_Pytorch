@@ -110,7 +110,6 @@ class NoisyLinearHay(nn.Module):
 
         return F.linear(x, w, b)
 
-
 class NoisyDQNHay(nn.Module):
     def __init__(self, num_action, use_cuda=True):
         super(NoisyDQNHay, self).__init__()
@@ -144,71 +143,6 @@ class NoisyDQNHay(nn.Module):
         x = F.relu(self.linear1(x, train))
 
         return self.linear2(x, train)
-
-
-class NoisyDQN(nn.Module):
-    def __init__(self, num_action, model_name, device):
-        super(NoisyDQN, self).__init__()
-        input_channel = config.state_size[2]*config.stack_frame
-        self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=32, kernel_size=8, stride=4, padding=4)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=4, stride=1, padding=1)
-        self.noisylinear1 = NoisyLinear(64*int(config.state_size[0]/8)*int(config.state_size[1]/8), 512, device)
-        self.noisylinear2 = NoisyLinear(512, num_action, device)
-
-    def forward(self, x, is_train):
-        x = (x-(255.0/2))/(255.0/2)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x)) # [bs:32, 64, 10, 10]
-        x = x.view(x.size(0), -1) # [32, 6400]
-        x = F.relu(self.noisylinear1(x, is_train))
-        out = self.noisylinear2(x, is_train)
-        return out
-
-class NoisyLinear(nn.Module):
-    def __init__(self, in_nl, out_nl):
-        super(NoisyLinear, self).__init__()
-        self.in_nl = in_nl
-        self.out_nl = out_nl
-        self.std_init = 0.017
-
-        # weight related variables
-        self.w_mu = nn.Parameter(torch.empty(self.out_nl, self.in_nl)).to(device)
-        self.w_sigma = nn.Parameter(torch.empty(self.out_nl, self.in_nl)).to(device)
-        self.w_eps = torch.empty(self.out_nl, self.in_nl).to(device)
-
-        # bias related variables
-        self.b_mu = nn.Parameter(torch.empty(self.out_nl)).to(device)
-        self.b_sigma = nn.Parameter(torch.empty(self.out_nl)).to(device)
-        self.b_eps = torch.empty(self.out_nl).to(device)
-
-        self.init_params()
-        self.init_noise()
-
-    def forward(self, x, is_train):
-        self.init_noise()
-        # print(self.w_sigma.data[0][0])
-
-        if is_train:
-            w = self.w_mu.data + torch.mul(self.w_sigma.data, self.w_eps)
-            b = self.b_mu.data + torch.mul(self.b_sigma.data, self.b_eps)
-        else:
-            w = self.w_mu.data
-            b = self.b_mu.data
-        return F.linear(x, w, b)
-
-
-    def init_params(self):
-        mu_dist_range = math.sqrt(3/self.in_nl)
-        self.w_mu.data.uniform_(-mu_dist_range, mu_dist_range)
-        self.b_mu.data.uniform_(-mu_dist_range, mu_dist_range)
-        self.w_sigma.data.fill_(self.std_init)
-        self.b_sigma.data.fill_(self.std_init)
-
-    def init_noise(self):
-        self.w_eps = torch.normal(mean=0.0, std=1.0, size=self.w_mu.size()).to(device)
-        self.b_pes = torch.normal(mean=0.0, std=1.0, size=self.b_mu.size()).to(device)
 
 class ICM(nn.Module):
     def __init__(self, num_action, name):
@@ -296,4 +230,3 @@ class RND(nn.Module):
         x_next_encode_t = x_next_t.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # predicted encoding vector of next state
 
         return x_next_encode, x_next_encode_t
-
