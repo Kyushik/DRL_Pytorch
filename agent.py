@@ -209,6 +209,34 @@ class DQNAgent():
 
         return loss.item(), max_Q
 
+    def train_model_noisy(self):
+        # 학습을 위한 미니 배치 데이터 샘플링
+        mini_batch = random.sample(self.memory, config.batch_size)
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
+
+        # 타겟값 계산
+        Q = self.model(state_batch, train=True)
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
+        acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
+
+        with torch.no_grad():
+            target_next_Q = self.target_model(next_state_batch, train=False)
+            max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
+            target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
+
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+
+        loss = F.smooth_l1_loss(acted_Q, target_Q)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss.item(), max_Q
+
     # 학습 수행
     def train_model_ICM(self):
         # 학습을 위한 미니 배치 데이터 샘플링
@@ -255,7 +283,6 @@ class DQNAgent():
         self.optimizer.step()
 
         return loss.item(), max_Q, config.intrinsic_coeff*reward_i.cpu().detach().numpy(), loss_rl.item(), loss_fm.item(), loss_im.item()
-
 
     # 학습 수행
     def train_model_RND(self):

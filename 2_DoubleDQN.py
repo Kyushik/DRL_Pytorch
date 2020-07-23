@@ -103,7 +103,7 @@ if __name__ == '__main__':
 
             # 네트워크 모델 저장
             if step % config.save_step == 0 and step != 0 and train_mode:
-                agent.save_model(config.load_model)
+                agent.save_model(config.load_model, train_mode)
 
         reward_list.append(episode_rewards)
         episode += 1
@@ -119,5 +119,5 @@ if __name__ == '__main__':
             loss_list = []
             max_Q_list = []
 
-    agent.save_model(config.load_model)
+    agent.save_model(config.load_model, train_mode)
     env.close()

@@ -102,14 +102,15 @@ if __name__ == '__main__':
 
             # Save Network Model
             if step % config.save_step == 0 and step != 0 and train_mode:
-                agent.save_model(config.load_model)
+                agent.save_model(config.load_model, train_mode)
 
         reward_list.append(episode_rewards)
         episode += 1
 
         # Print Progress and Update Info to Tensorboard
         if episode % config.print_episode == 0 and episode != 0:
-            print(f"[{step:07d}/{config.run_step:d}] epi: {episode:04d}, reward: {np.mean(reward_list):.3f}, loss: {np.mean(loss_list):.6f}, maxQ: {np.mean(max_Q_list):.4f}, eps: {agent.epsilon:.3f}")
+            print("step: {} / episode: {} / reward: {:.2f} / loss: {:.4f} / maxQ: {:.2f} / epsilon: {:.4f}".format
+                  (step, episode, np.mean(reward_list), np.mean(loss_list), np.mean(max_Q_list), agent.epsilon))
 
             if not config.load_model:
                 agent.write_scalar(np.mean(loss_list), np.mean(reward_list), np.mean(max_Q_list), episode)
@@ -118,5 +119,5 @@ if __name__ == '__main__':
             loss_list = []
             max_Q_list = []
 
-    agent.save_model(config.load_model)
+    agent.save_model(config.load_model, train_mode)
     env.close()
