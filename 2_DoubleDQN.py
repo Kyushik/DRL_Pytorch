@@ -17,8 +17,8 @@ import config
 # Main function
 if __name__ == '__main__':
     # set unity environment path (file_name)
-    env = UnityEnvironment(file_name=config.env_name)
-    # env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
+    # env = UnityEnvironment(file_name=config.env_name)
+    env = UnityEnvironment(file_name=config.env_name, worker_id=np.random.randint(100000))
 
     # setting brain for unity
     default_brain = env.brain_names[0]
@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     train_mode = config.train_mode
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = config.device
 
     model_ = model.DQN(config.action_size, "main").to(device)
     target_model_ = model.DQN(config.action_size, "target").to(device)

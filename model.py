@@ -230,3 +230,35 @@ class RND(nn.Module):
         x_next_encode_t = x_next_t.view(-1, 32*int(config.state_size[0]/16)*int(config.state_size[1]/16)) # predicted encoding vector of next state
 
         return x_next_encode, x_next_encode_t
+
+
+class Actor(nn.Module):
+    def __init__(self, num_action, name):
+        super(Actor, self).__init__()
+        input_size = config.state_size
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, num_action)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        policy = F.tanh(self.fc3(x))
+        return policy
+
+class Critic(nn.Module):
+    def __init__(self, num_action, name):
+        super(Critic, self).__init__()
+        input_size = config.state_size
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128 + num_action, 128)
+        self.fc3 = nn.Linear(128, 128)
+        self.fc4 = nn.Linear(128, 1)
+
+    def forward(self, x, a):
+        x = F.relu(self.fc1(x))
+        x = torch.cat([x, a.squeeze(1)], dim=1)
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        q_value = self.fc4(x)
+        return q_value
