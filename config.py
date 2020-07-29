@@ -2,24 +2,24 @@
 import datetime
 import torch
 
-state_size = [40,80,1]
+state_size = 9
 action_size = 3
 
 load_model = False
 train_mode = True
 
-batch_size = 32
-mem_maxlen = 100000
+batch_size = 128
+mem_maxlen = 50000
 
 discount_factor = 0.99
 learning_rate = 0.0001
 
-skip_frame = 4
-stack_frame = 4
+skip_frame = 1
+stack_frame = 1
 
 start_train_step = 10000
-run_step = 250000
-test_step = 25000
+run_step = 50000
+test_step = 10000
 
 target_update_step = int(run_step/100)
 print_episode = 10
@@ -35,6 +35,15 @@ eta = 0.01
 extrinsic_coeff = 1.0
 intrinsic_coeff = 0.01
 
+# Parameters for DDPG
+actor_lr = 1e-4
+critic_lr = 5e-4
+tau = 1e-3
+mu = 0
+theta = 1e-3
+sigma = 2e-3
+
+
 # Environment Setting
 # env_config = {'gridSize':3}
 env_config = {}
@@ -42,11 +51,11 @@ env_config = {}
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Environment Path
-game = "Pong"
+game = "Drone"
 env_name = "./env/" + game + "/Windows/" + game
 
 # 모델 저장 및 불러오기 경로
 date_time = datetime.datetime.now().strftime("%Y%m%d-%H-%M-%S")
 
 save_path = "./saved_models/" + game + "/" + date_time
-load_path = "./saved_models/" + game + "/20200722-16-52-13_RND"
+load_path = "./saved_models/" + game + "/20200728-15-29-26_DDPG"

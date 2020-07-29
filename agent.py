@@ -92,6 +92,7 @@ class DQNAgent():
             # 네트워크 연산에 따라 행동 결정
                 Q = self.model(torch.from_numpy(state).unsqueeze(0).to(self.device))
                 return np.argmax(Q.cpu().detach().numpy())
+
     # 프레임을 skip하면서 설정에 맞게 stack
     def skip_stack_frame(self, obs):
         self.obs_set.append(obs)
@@ -150,7 +151,7 @@ class DQNAgent():
 
         # 타겟값 계산
         Q = self.model(state_batch)
-        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].to(self.device)
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
@@ -247,7 +248,7 @@ class DQNAgent():
 
         # 타겟값 계산
         Q = self.model(state_batch, train=True)
-        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].to(self.device)
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
@@ -282,7 +283,7 @@ class DQNAgent():
         reward_i = (config.eta * 0.5) * torch.sum(torch.square(x_fm - x_next_encode), dim=1)
 
         Q = self.model(state_batch)
-        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].to(self.device)
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
@@ -330,7 +331,7 @@ class DQNAgent():
 
         Q = self.model(state_batch)
         # print(f"Q: {Q}")
-        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].cuda()
+        action_batch_onehot = torch.eye(config.action_size)[action_batch.type(torch.long)].to(self.device)
         acted_Q = torch.sum(Q * action_batch_onehot, axis=-1).unsqueeze(1)
 
         with torch.no_grad():
@@ -356,3 +357,150 @@ class DQNAgent():
         self.optimizer.step()
 
         return loss.item(), max_Q, config.intrinsic_coeff*reward_i.cpu().detach().numpy(), loss_rl.item(), loss_fm.item()
+
+# OU Noise 클래스 -> DDPG 에서 action 을 결정할 때 사용
+class OUNoise():
+    def __init__(self):
+        self.X = np.zeros(config.action_size)
+        self.mu = config.mu
+        self.theta = config.theta
+        self.sigma = config.sigma
+
+    def sample(self):
+        dx = self.theta * (self.mu - self.X) + self.sigma * np.random.randn(len(self.X))
+        self.X += dx
+        return self.X
+
+
+# DDPGAgent 클래스 -> DDPG 알고리즘을 위한 다양한 함수 정의
+class DDPGAgent():
+    def __init__(self, actor, critic, target_actor, target_critic, optimizer_actor, optimizer_critic, device, algorithm):
+        # 클래스의 함수들을 위한 값 설정
+        self.actor = actor
+        self.critic = critic
+        self.target_actor = target_actor
+        self.target_critic = target_critic
+
+        self.ou_noise = OUNoise()
+
+        self.optimizer_actor = optimizer_actor
+        self.optimizer_critic = optimizer_critic
+
+        self.device = device
+        self.algorithm = algorithm
+
+        self.memory = deque(maxlen=config.mem_maxlen)
+        self.obs_set = deque(maxlen=config.skip_frame*config.stack_frame)
+
+        self.epsilon = config.epsilon_init
+
+        if not config.load_model and config.train_mode:
+            self.writer = SummaryWriter('{}'.format(config.save_path + self.algorithm))
+        elif config.load_model and config.train_mode:
+            self.writer = SummaryWriter('{}'.format(config.load_path))
+
+        if config.load_model == True:
+            checkpoint = torch.load(config.load_path+'/model.pth', map_location=self.device)
+            self.critic.load_state_dict(checkpoint['critic'])
+            self.actor.load_state_dict(checkpoint['actor'])
+            self.critic.to(self.device)
+            self.actor.to(self.device)
+            if config.train_mode: # train mode
+                self.critic.train()
+                self.actor.train()
+            else: # evaluation mode
+                self.critic.eval()
+                self.actor.eval()
+
+            print("Model is loaded from {}".format(config.load_path+'/model.pth'))
+
+    # 네트워크 연산 + OU noise (training 시) 에 따라 행동 결정
+    def get_action(self, state, train_mode):
+        with torch.no_grad():
+            policy = self.actor(torch.from_numpy(state).unsqueeze(0).to(self.device))
+            action = policy.cpu().detach().numpy()
+            noise = self.ou_noise.sample()
+            return action + noise if train_mode else action
+
+    # 리플레이 메모리에 데이터 추가 (상태, 행동, 보상, 다음 상태, 게임 종료 여부)
+    def append_sample(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    # 네트워크 모델 저장
+    def save_model(self, load_model, train_mode):
+        if not load_model and train_mode: # first training
+            os.makedirs(config.save_path + self.algorithm, exist_ok=True)
+            torch.save({
+                'critic': self.critic.state_dict(),
+                'actor': self.actor.state_dict()
+            }, config.save_path + self.algorithm +'/model.pth')
+
+            print("Save Model: {}".format(config.save_path + self.algorithm))
+
+        elif load_model and train_mode: # additional training
+            torch.save({
+                'critic': self.critic.state_dict(),
+                'actor': self.actor.state_dict()
+            }, config.load_path +'/model.pth')
+
+            print("Save Model: {}".format(config.load_path))
+
+    # 학습 수행
+    def train_model(self):
+        self.actor.train(), self.critic.train()
+        self.target_actor.train(), self.target_critic.train()
+
+        # 학습을 위한 미니 배치 데이터 샘플링
+        mini_batch = random.sample(self.memory, config.batch_size)
+
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
+
+        # get target
+        Q = self.critic(state_batch, action_batch)
+
+        with torch.no_grad():
+            target_next_policy = self.target_actor(next_state_batch)
+            target_next_Q = self.target_critic(next_state_batch, target_next_policy)
+            max_next_Q = torch.max(target_next_Q, dim=1, keepdim=True).values
+            target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * max_next_Q + reward_batch.view(config.batch_size, -1)
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+
+        # update critic
+        critic_loss = F.mse_loss(input=Q, target=target_Q)
+        self.optimizer_critic.zero_grad()
+        critic_loss.backward()
+        self.optimizer_critic.step()
+
+        # update actor
+        policy = self.actor(state_batch)
+
+        actor_loss = -self.critic(state_batch, policy).mean()
+        self.optimizer_actor.zero_grad()
+        actor_loss.backward()
+        self.optimizer_actor.step()
+
+        return critic_loss.item(), actor_loss.item(), max_Q
+
+    # 타겟 네트워크 업데이트 : hard update
+    def hard_update_target(self):
+        self.target_actor.load_state_dict(self.actor.state_dict())
+        self.target_critic.load_state_dict(self.critic.state_dict())
+
+    # 타겟 네트워크 업데이트 : soft update
+    def soft_update_target(self):
+        self.soft_update(self.actor, self.target_actor, config.tau)
+        self.soft_update(self.critic, self.target_critic, config.tau)
+
+    def soft_update(self, model, target_model, tau):
+        for target_param, param in zip(target_model.parameters(), model.parameters()):
+            target_param.data.copy_(tau*param.data + (1-tau)*target_param.data)
+
+    def write_scalar(self, loss_critic, loss_actor, reward, maxQ, episode):
+        self.writer.add_scalar('Mean_Loss_Critic', loss_critic, episode)
+        self.writer.add_scalar('Mean_Loss_Actor', loss_actor, episode)
+        self.writer.add_scalar('Mean_Reward', reward, episode)
+        self.writer.add_scalar('Max_Q', maxQ, episode)
