@@ -262,3 +262,47 @@ class Critic(nn.Module):
         x = F.relu(self.fc3(x))
         q_value = self.fc4(x)
         return q_value
+
+class ActorSAC(nn.Module):
+    def __init__(self, num_action, name):
+        super(ActorSAC, self).__init__()
+        input_size = config.state_size
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3_mu = nn.Linear(128, num_action)
+        self.fc3_std = nn.Linear(128, num_action)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        mu = self.fc3_mu(x)
+        ln_std = self.fc3_std(x)
+        std = ln_std.exp()
+        return mu, std
+
+class CriticSAC(nn.Module):
+    def __init__(self, num_action, name):
+        super(CriticSAC, self).__init__()
+        input_size = config.state_size
+        # Q1 architecture
+        self.fc1_Q1 = nn.Linear(input_size + num_action, 128)
+        self.fc2_Q1 = nn.Linear(128, 128)
+        self.fc3_Q1 = nn.Linear(128, 1)
+
+        # Q2 architecture
+        self.fc1_Q2 = nn.Linear(input_size + num_action, 128)
+        self.fc2_Q2 = nn.Linear(128, 128)
+        self.fc3_Q2 = nn.Linear(128, 1)
+
+    def forward(self, x, a):
+        x = torch.cat([x, a.squeeze(1)], dim=1)
+
+        x1 = F.relu(self.fc1_Q1(x))
+        x1 = F.relu(self.fc2_Q1(x1))
+        q1 = F.relu(self.fc3_Q1(x1))
+
+        x2 = F.relu(self.fc1_Q2(x))
+        x2 = F.relu(self.fc2_Q2(x2))
+        q2 = F.relu(self.fc3_Q2(x2))
+
+        return q1, q2
