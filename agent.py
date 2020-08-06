@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
+from torch.distributions import Normal
 
 import numpy as np
 import random
@@ -371,7 +372,6 @@ class OUNoise():
         self.X += dx
         return self.X
 
-
 # DDPGAgent 클래스 -> DDPG 알고리즘을 위한 다양한 함수 정의
 class DDPGAgent():
     def __init__(self, actor, critic, target_actor, target_critic, optimizer_actor, optimizer_critic, device, algorithm):
@@ -504,3 +504,169 @@ class DDPGAgent():
         self.writer.add_scalar('Mean_Loss_Actor', loss_actor, episode)
         self.writer.add_scalar('Mean_Reward', reward, episode)
         self.writer.add_scalar('Max_Q', maxQ, episode)
+
+# SACAgent 클래스 -> SAC 알고리즘을 위한 다양한 함수 정의
+class SACAgent():
+    def __init__(self, actor, critic, target_critic, optimizer_actor, optimizer_critic, optimizer_alpha, alpha, log_alpha, target_entropy, device, algorithm):
+        # 클래스의 함수들을 위한 값 설정
+        self.actor = actor
+        self.critic = critic
+        self.target_critic = target_critic
+
+        self.optimizer_actor = optimizer_actor
+        self.optimizer_critic = optimizer_critic
+        self.optimizer_alpha = optimizer_alpha
+
+        self.device = device
+        self.algorithm = algorithm
+
+        self.memory = deque(maxlen=config.mem_maxlen)
+        self.obs_set = deque(maxlen=config.skip_frame*config.stack_frame)
+
+        self.epsilon = config.epsilon_init
+        self.alpha = alpha
+        self.log_alpha = log_alpha
+        self.target_entropy = target_entropy
+
+        if not config.load_model and config.train_mode:
+            self.writer = SummaryWriter('{}'.format(config.save_path + self.algorithm))
+        elif config.load_model and config.train_mode:
+            self.writer = SummaryWriter('{}'.format(config.load_path))
+
+        if config.load_model == True:
+            checkpoint = torch.load(config.load_path+'/model.pth', map_location=self.device)
+            self.critic.load_state_dict(checkpoint['critic'])
+            self.actor.load_state_dict(checkpoint['actor'])
+            self.critic.to(self.device)
+            self.actor.to(self.device)
+            if config.train_mode: # train mode
+                self.critic.train()
+                self.actor.train()
+            else: # evaluation mode
+                self.critic.eval()
+                self.actor.eval()
+
+            print("Model is loaded from {}".format(config.load_path+'/model.pth'))
+
+    # reparameterization trick 에 따라 행동 결정
+    def get_action(self, state, train_mode):
+        mu, std = self.actor(torch.from_numpy(state).unsqueeze(0).to(self.device))
+        if not train_mode:
+            std = 0
+        m = Normal(mu, std)
+        z = m.rsample()
+        action = torch.tanh(z)
+        action = action.data.cpu().detach().numpy()
+        return action
+
+    def sample_action(self, mu, std):
+        m = Normal(mu, std)
+        z = m.rsample()
+        action = torch.tanh(z)
+        log_prob = m.log_prob(z)
+        # Enforcing Action Bounds
+        log_prob -= torch.log(1 - action.pow(2) + config.epsilon)
+        log_prob = log_prob.sum(1, keepdim=True)
+        return action, log_prob
+
+
+    # 리플레이 메모리에 데이터 추가 (상태, 행동, 보상, 다음 상태, 게임 종료 여부)
+    def append_sample(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    # 네트워크 모델 저장
+    def save_model(self, load_model, train_mode):
+        if not load_model and train_mode: # first training
+            os.makedirs(config.save_path + self.algorithm, exist_ok=True)
+            torch.save({
+                'critic': self.critic.state_dict(),
+                'actor': self.actor.state_dict()
+            }, config.save_path + self.algorithm +'/model.pth')
+
+            print("Save Model: {}".format(config.save_path + self.algorithm))
+
+        elif load_model and train_mode: # additional training
+            torch.save({
+                'critic': self.critic.state_dict(),
+                'actor': self.actor.state_dict()
+            }, config.load_path +'/model.pth')
+
+            print("Save Model: {}".format(config.load_path))
+
+    # 학습 수행
+    def train_model(self):
+        self.actor.train(), self.critic.train()
+        self.target_critic.train()
+
+        # 학습을 위한 미니 배치 데이터 샘플링
+        mini_batch = random.sample(self.memory, config.batch_size)
+
+        state_batch = torch.cat([torch.tensor([mini_batch[i][0]]) for i in range(config.batch_size)]).float().to(self.device)
+        action_batch = torch.cat([torch.tensor([mini_batch[i][1]]) for i in range(config.batch_size)]).float().to(self.device)
+        reward_batch = torch.cat([torch.tensor([mini_batch[i][2]]) for i in range(config.batch_size)]).float().to(self.device)
+        next_state_batch = torch.cat([torch.tensor([mini_batch[i][3]]) for i in range(config.batch_size)]).float().to(self.device)
+        done_batch = torch.cat([torch.tensor([mini_batch[i][4]]) for i in range(config.batch_size)]).float().to(self.device)
+
+        # get Q values (Q1, Q2)
+        Q1, Q2 = self.critic(state_batch, action_batch)
+
+        with torch.no_grad():
+            mu, std = self.actor(next_state_batch)
+            action_next, log_prob_next = self.sample_action(mu, std)
+            target_next_Q1, target_next_Q2 = self.target_critic(next_state_batch, action_next)
+            min_target_next_Q = torch.min(target_next_Q1, target_next_Q2) - self.alpha * log_prob_next
+            target_Q = (1. - done_batch).view(config.batch_size, -1) * config.discount_factor * min_target_next_Q + reward_batch.view(config.batch_size, -1)
+
+        max_Q = torch.mean(torch.max(target_Q, axis=0).values).cpu().numpy()
+
+        # update critic
+        critic_loss1 = F.mse_loss(input=Q1, target=target_Q.detach())
+        critic_loss2 = F.mse_loss(input=Q2, target=target_Q.detach())
+        critic_loss = critic_loss1 + critic_loss2
+
+        self.optimizer_critic.zero_grad()
+        critic_loss.backward()
+        self.optimizer_critic.step()
+
+        # update actor
+        mu, std = self.actor(state_batch)
+        action, log_prob = self.sample_action(mu, std)
+
+        Q1, Q2 = self.critic(state_batch, action)
+        min_Q = torch.min(Q1, Q2)
+
+        actor_loss = ((self.alpha * log_prob) - min_Q).mean()
+        self.optimizer_actor.zero_grad()
+        actor_loss.backward(retain_graph=True)
+        self.optimizer_actor.step()
+
+        # update alpha
+        alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
+        self.optimizer_alpha.zero_grad()
+        alpha_loss.backward()
+        self.optimizer_alpha.step()
+
+        self.alpha = self.log_alpha.exp()
+
+        return critic_loss1.item(), critic_loss2.item(), actor_loss.item(), alpha_loss.item(), max_Q, self.alpha.cpu().detach().numpy()
+
+    # 타겟 네트워크 업데이트 : hard update
+    def hard_update_target(self):
+        self.target_critic.load_state_dict(self.critic.state_dict())
+
+    # 타겟 네트워크 업데이트 : soft update
+    def soft_update_target(self):
+        self.soft_update(self.critic, self.target_critic, config.tau)
+
+    def soft_update(self, model, target_model, tau):
+        for target_param, param in zip(target_model.parameters(), model.parameters()):
+            target_param.data.copy_(tau*param.data + (1-tau)*target_param.data)
+
+    def write_scalar(self, loss_critic1, loss_critic2, loss_actor, loss_alpha, reward, maxQ, alpha, episode):
+        self.writer.add_scalar('Mean_Loss_Critic1', loss_critic1, episode)
+        self.writer.add_scalar('Mean_Loss_Critic2', loss_critic2, episode)
+        self.writer.add_scalar('Mean_Loss_Actor', loss_actor, episode)
+        self.writer.add_scalar('Mean_Loss_Alpha', loss_alpha, episode)
+        self.writer.add_scalar('Mean_Reward', reward, episode)
+        self.writer.add_scalar('Max_Q', maxQ, episode)
+        self.writer.add_scalar('Alpha', alpha, episode)
